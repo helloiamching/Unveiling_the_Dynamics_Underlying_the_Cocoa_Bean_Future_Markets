@@ -1,0 +1,136 @@
+---
+title: "Unveiling the Dynamics Underlying the Cocoa Bean Future Markets"
+author: "Minen Sun, Ching Wang, and Kuan-Hsun Wu"
+date: "2024-06-25"
+output: html_document
+---
+*Corresponding authors. Email: 109304018@g.nccu.edu.tw; 109304015@g.nccu.edu.tw; 110304015@g.nccu.edu.tw
+
+
+Loading packages
+```{r setup , echo=FALSE}
+library(seastests)
+library(forecast)
+library(TSA)
+library(astsa)
+library(tseries)
+```
+Loading Data
+```{r Loading Data}
+cocoa_original= read.csv('/Users/wang.c/Desktop/CC=F1.csv')
+cocoa_original = cocoa_original$Volume
+n = length(cocoa_original)
+cocoa.test =  cocoa_original[((n-51):n)]
+cocoa = cocoa_original[-((n-51):n)]
+```
+Prelimary Analysis
+```{r Prelimary Analysis}
+ts.plot(cocoa)
+my.ts = log(cocoa+1)
+ts.plot(my.ts)
+acf(my.ts,lag = 1000, main = "")
+pacf(my.ts,lag = 1000, main = "")
+```
+Stationary Test
+```{r Stationary Test}
+adf.test(my.ts)
+```
+Model Fitting
+```{r Model Fitting}
+model1 = stats::arima(my.ts,order = c(13,0,1), method = "CSS-ML")
+model2 = stats::arima(my.ts,order = c(26,0,1), method = "CSS-ML")
+model3 = stats::arima(my.ts,order = c(1,0,13), method = "CSS-ML")
+model4 = stats::arima(my.ts,order = c(1,0,26), method = "CSS-ML")
+
+model5 = stats::arima(my.ts,order = c(13,0,1), seasonal = list(order = c(1,0,0), period = 52), method = "CSS-ML")
+model6 = stats::arima(my.ts,order = c(13,0,1), seasonal = list(order = c(0,0,1), period = 52), method = "CSS-ML")
+model7 = stats::arima(my.ts,order = c(13,0,1), seasonal = list(order = c(1,0,1), period = 52), method = "CSS-ML")
+model8 = stats::arima(my.ts,order = c(13,0,0), seasonal = list(order = c(1,0,0), period = 52), method = "CSS-ML")
+
+model9 = stats::arima(my.ts,order = c(13,0,0), seasonal = list(order = c(0,0,1), period = 52), method = "CSS-ML")
+model10 = stats::arima(my.ts,order = c(13,0,0), seasonal = list(order = c(1,0,1), period = 52), method = "CSS-ML")
+model11 = stats::arima(my.ts,order = c(26,0,0), seasonal = list(order = c(0,0,1), period = 52), method = "CSS-ML")
+model12 = stats::arima(my.ts,order = c(26,0,1), seasonal = list(order = c(0,0,1), period = 52), method = "CSS-ML")
+model13 = stats::arima(my.ts,order = c(26,0,1), seasonal = list(order = c(1,0,0), period = 52), method = "CSS-ML")
+```
+Ljung-Box Test
+```{r Ljung-Box Test}
+find.sig.lags = function(residu){
+  p.v = 1
+  df=0
+  while(p.v>0.05){
+    df = df+1
+    p.v = Box.test(residu,type = "Ljung-Box",df)$p.value
+  }
+  return(df)
+}
+
+models <- list(model1, model2, model3, model4, model5, model6, model7, model8, 
+               model9, model10, model11, model12, model13)
+
+for (i in 1:length(models)) {
+  residu <- models[[i]]$residuals
+  sig_lag <- find.sig.lags(residu)
+  print(paste("Model", i, "significant lag:", sig_lag))
+}
+```
+Diagnotics
+```{r Diagnotics}
+for (i in 1:13) {
+  model <- models[[i]]
+  residuals <-model$residuals
+  par(mfrow=c(2,2), oma=c(0,0,2,0))
+  plot(residuals, main=paste("Residuals Plot"), ylab="Residuals")
+  acf(residuals, main=paste("ACF of Residuals"), lag.max=50)
+  qqnorm(residuals, main=paste( "Q-Q Plot"))
+  qqline(residuals, col="red")
+  lb_test_results <- sapply(0:100, function(lag) {
+    Box.test(residuals, lag=lag, type="Ljung-Box")$p.value
+  })
+  plot(0:100, lb_test_results, type="b", pch=19, xlab="Lag", ylab="P-value",
+       main=paste("Ljung-Box Test P-values"), ylim=c(0, 1))
+  abline(h=0.05, col="red", lty=2)
+  mtext(paste("Diagnostics of model", i), outer = TRUE, cex = 1.5)
+}
+```
+#####################################################################
+##########################AIC & BIC##################################
+#####################################################################
+```{r AIC & BIC}
+models_comparison <- list(model7, model8, model10)
+model_names <- c("model7", "model8", "model10")
+
+for (i in 1:3) {
+  model_comparison <- models_comparison[[i]]
+  cat("Model:", model_names[i], "\n")
+  cat("AIC:", AIC(model_comparison), "\n")
+  cat("BIC:", BIC(model_comparison), "\n\n")
+}
+```
+Prediction
+```{r Prediction}
+par(mfrow=c(1,1))
+error <- matrix(NA, nrow = length(log(cocoa.test + 1)), ncol = 2)
+models_prediction <- list(model7, model10)
+model_names <- c("model7","model10")
+forecast_times <- seq(990, 1041)
+
+for (i in 1:2) {
+  model_prediction <- forecast(models_prediction[[i]], h = 52)
+  plot(log(cocoa_original+1), type = 'l', xlim = c(990,1041))
+  lines(forecast_times, model_prediction$mean, col = "red", lty = 1)
+  points(forecast_times, model_prediction$mean, col = "orange", pch = 16)
+  
+  polygon(c(forecast_times, rev(forecast_times)), 
+          c(model_prediction$lower[, 2], rev(model_prediction$upper[, 2])), 
+          col = rgb(1, 0.4, 0.4, alpha = 0.5), border = NA)
+  mse <- mean((log(cocoa.test+1)-model_prediction$mean)^2)
+  error[, i] <- (log(cocoa.test+1)-model_prediction$mean)^2
+  cat("Model:", model_names[i], "\n")
+  cat("MSE:", mse, "\n")
+}
+dm.test(error[,1],error[,2],alternative = 'two.sided')
+
+```
+End
+
